@@ -1,0 +1,49 @@
+######################################################################## 
+# SEED THE LAB. Runs inside GitHub. Nothing to install on your machine.
+#
+# HOW TO USE IT
+#   1. In your repository, click the Actions tab at the top.
+#   2. On the left, click "Seed lab tickets".
+#   3. On the right, click the "Run workflow" button, then the green
+#      "Run workflow" button in the small panel that drops down.
+#   4. Wait about two minutes. Refresh the page. A green tick means done.
+#   5. Click the Issues tab. You should see 51 tickets.
+#
+# WHY THERE IS NO TOKEN HERE
+#   GitHub gives every workflow run a temporary token of its own, and the
+#   "permissions: issues: write" line below is what grants it the right to
+#   create issues. It expires when the run finishes.
+#   That is a real pattern and not a lab shortcut. It is how you avoid
+#   putting a long lived credential anywhere it can leak.
+#
+# IF THE RUN FAILS
+#   Click the failed run, then the "seed" job, to read the log. The two
+#   usual causes:
+#     "Resource not accessible by integration"
+#        Settings > Actions > General > Workflow permissions.
+#        Set it to "Read and write permissions". Save. Run again.
+#     "This repository already has issues in it"
+#        You already seeded. Run the "Reset lab" workflow first.
+########################################################################
+
+name: Seed lab tickets
+
+on:
+  workflow_dispatch:        # means: only runs when you click the button
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write         # the only permission this needs
+    steps:
+      - name: Get the lab files
+        uses: actions/checkout@v4
+
+      - name: Create the 51 tickets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python 01_Lab_Setup/seed_lab.py \
+            --owner "${{ github.repository_owner }}" \
+            --repo  "${{ github.event.repository.name }}"
