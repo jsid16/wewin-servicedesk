@@ -1,0 +1,57 @@
+######################################################################## 
+# RESET THE LAB, so you can run the demo again from the same starting
+# point. Runs inside GitHub. Nothing to install.
+#
+# HOW TO USE IT
+#   1. Actions tab.
+#   2. "Reset lab" on the left.
+#   3. "Run workflow", leave the mode as clean, then the green button.
+#   4. About a minute.
+#
+# WHAT clean DOES
+#   Reopens every closed ticket, deletes every comment that was posted
+#   onto a ticket, and strips the labels the solution adds while it runs
+#   (resolved, needs-triage, auto-answered, deflected). The labels that
+#   came with the seed, such as access and network, are left alone.
+#   Your ticket numbers do not change.
+#
+# ONE THING THIS CANNOT RESET
+#   Your Aisera tenant still holds the tickets it ingested earlier, with
+#   their old open or closed state. After resetting here, re-run your
+#   data source in Aisera so the two agree again.
+#   A demo where the tenant and the repository disagree is worse than no
+#   demo, because when something looks wrong you will not know which of
+#   the two is lying.
+########################################################################
+
+name: Reset lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "clean puts it back ready to demo. wipe closes and locks everything."
+        required: true
+        default: clean
+        type: choice
+        options:
+          - clean
+          - wipe
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Get the lab files
+        uses: actions/checkout@v4
+
+      - name: Reset the tickets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python 01_Lab_Setup/reset_lab.py \
+            --owner "${{ github.repository_owner }}" \
+            --repo  "${{ github.event.repository.name }}" \
+            --mode  "${{ inputs.mode }}"

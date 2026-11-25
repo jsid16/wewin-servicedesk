@@ -1,0 +1,105 @@
+######################################################################## 
+# TELL AISERA THE MOMENT A TICKET IS RAISED.  Module 10.
+#
+# WHY THIS FILE EXISTS RATHER THAN A PLAIN WEBHOOK
+#   GitHub can call an address when a ticket is raised. That is a webhook
+#   and it takes two minutes to set up.
+#   But Aisera's event endpoint wants an application key in a request
+#   header, and GitHub webhooks cannot send custom headers. They send a
+#   secret, in a fixed field, and nothing else. GitLab is the same unless
+#   you pay for it.
+#   So something has to sit in between and shape the request. Here that
+#   is this file. On a customer engagement it is middleware, an
+#   integration platform, or a ServiceNow business rule. The pattern is
+#   the lesson, not the tool.
+#
+# BEFORE THIS WORKS, ADD TWO REPOSITORY SECRETS
+#   Settings > Secrets and variables > Actions > New repository secret
+#     AISERA_ENDPOINT   the event endpoint address from your tenant
+#     AISERA_APP_KEY    the application key that goes with it
+#   NOT IN THIS FILE. A workflow file is readable by anyone who can read
+#   the repository. A secret is not.
+#
+# TO TEST IT
+#   Raise a ticket in the Issues tab by hand. Watch the Actions tab: a
+#   run should start within a few seconds. Then watch your Aisera event
+#   log. Then look back at the ticket.
+#
+# IF THE RUN SUCCEEDS AND AISERA RECEIVES NOTHING
+#   Read the "Call Aisera" step's log. It prints the status code it got
+#   back. 401 or 403 means the key is wrong or the header name is wrong.
+#   404 means the endpoint address is wrong.
+########################################################################
+
+name: Notify Aisera of a new ticket
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Aisera
+        env:
+          ENDPOINT: ${{ secrets.AISERA_ENDPOINT }}
+          APP_KEY:  ${{ secrets.AISERA_APP_KEY }}
+          NUMBER:   ${{ github.event.issue.number }}
+          TITLE:    ${{ github.event.issue.title }}
+          BODY:     ${{ github.event.issue.body }}
+          ACTION:   ${{ github.event.action }}
+          REPO:     ${{ github.repository }}
+        run: |
+          if [ -z "$ENDPOINT" ] || [ -z "$APP_KEY" ]; then
+            echo "AISERA_ENDPOINT or AISERA_APP_KEY is not set."
+            echo "Add them as repository secrets. See the top of this file."
+            exit 1
+          fi
+
+          # Build the payload with a tool that escapes properly.
+          # Ticket bodies contain quotes, backslashes and line breaks, and
+          # pasting them straight into JSON is how you get a malformed
+          # request that is hard to spot.
+          PAYLOAD=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+              "ticket_number": os.environ["NUMBER"],
+              "title":         os.environ["TITLE"],
+              "body":          os.environ.get("BODY") or "",
+              "action":        os.environ["ACTION"],
+              "repository":    os.environ["REPO"],
+              "source":        "github",
+          }))
+          PY
+          )
+
+          echo "Sending ticket #$NUMBER to Aisera."
+
+          STATUS=$(curl -sS -o /tmp/aisera_response.txt -w "%{http_code}" \
+            -X POST "$ENDPOINT" \
+            -H "Content-Type: application/json" \
+            -H "X-Aisera-App-Key: $APP_KEY" \
+            --data-binary "$PAYLOAD")
+
+          echo "Aisera replied with status $STATUS"
+          echo "Response body:"
+          cat /tmp/aisera_response.txt
+          echo ""
+
+          # A 2xx means Aisera accepted it. Anything else should fail the
+          # run loudly, because a notification that silently does not
+          # arrive is the worst kind: the ticket just sits there and
+          # nobody knows why.
+          case "$STATUS" in
+            2*) echo "Accepted." ;;
+            401|403) echo "Rejected. The app key or the header name is wrong."; exit 1 ;;
+            404) echo "Not found. The endpoint address is wrong."; exit 1 ;;
+            *) echo "Unexpected status. See the response above."; exit 1 ;;
+          esac
+
+# A NOTE ON THE HEADER NAME
+#   X-Aisera-App-Key is the usual name but tenant versions differ. Check
+#   what your event configuration screen says it expects and change it
+#   here to match. If the screen gives you a full example request, copy
+#   the header name from that rather than from this file.
