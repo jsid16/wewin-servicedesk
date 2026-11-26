@@ -44,6 +44,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python 01_Lab_Setup/seed_lab.py \
+          python seed_lab.py \
             --owner "${{ github.repository_owner }}" \
             --repo  "${{ github.event.repository.name }}"
